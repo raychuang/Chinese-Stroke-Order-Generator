@@ -1,4 +1,4 @@
-const puppeteer = require('puppeteer');
+const puppeteer = require('puppeteer-core');
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
@@ -31,12 +31,68 @@ function checkFFmpeg() {
     }
 }
 
+// 查找Chrome路径
+function findChromePath() {
+    const platform = process.platform;
+    let possiblePaths = [];
+
+    if (platform === 'darwin') {
+        possiblePaths = [
+            '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+            '/Applications/Google Chrome Canary.app/Contents/MacOS/Google Chrome Canary',
+            '/Applications/Chromium.app/Contents/MacOS/Chromium',
+            '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge'
+        ];
+    } else if (platform === 'win32') {
+        const suffix = '\\Google\\Chrome\\Application\\chrome.exe';
+        const prefixes = [
+            process.env.LOCALAPPDATA,
+            process.env.PROGRAMFILES,
+            process.env['PROGRAMFILES(X86)']
+        ].filter(Boolean);
+
+        possiblePaths = prefixes.map(prefix => prefix + suffix);
+    } else {
+        // Linux
+        possiblePaths = [
+            '/usr/bin/google-chrome',
+            '/usr/bin/chromium-browser',
+            '/usr/bin/chromium',
+            '/usr/bin/google-chrome-stable'
+        ];
+    }
+
+    for (const p of possiblePaths) {
+        if (fs.existsSync(p)) {
+            return p;
+        }
+    }
+
+    return null;
+}
+
 async function generateGIF(character) {
     console.log(`开始生成汉字 "${character}" 的笔顺动画GIF...`);
     
+    const executablePath = findChromePath();
+    if (!executablePath) {
+        throw new Error('未找到Chrome/Chromium浏览器，请确保已安装Google Chrome');
+    }
+    console.log(`使用浏览器: ${executablePath}`);
+
+    if (!checkFFmpeg()) {
+        throw new Error('FFmpeg未安装或配置错误，请安装FFmpeg并配置到系统PATH中');
+    }
+
     const browser = await puppeteer.launch({
+        executablePath,
         headless: true,
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
+        userDataDir: path.join(CONFIG.tempDir, 'chrome-user-data'),
+        args: [
+            '--no-sandbox', 
+            '--disable-setuid-sandbox',
+            '--allow-file-access-from-files' // 允许从文件加载资源
+        ]
     });
     
     const tempFrameDir = path.join(CONFIG.tempDir, character);
@@ -76,66 +132,21 @@ async function generateGIF(character) {
         
         // 录制帧
         const frameInterval = 1000 / CONFIG.fps; // 每帧间隔（毫秒）
-        const totalDuration = 10000; // 总动画时长（毫秒），增加时长以捕捉完整动画
-        const totalFrames = Math.ceil(totalDuration / frameInterval);
+        // const totalDuration = 10000; // 不再使用固定总时长
+        // const totalFrames = Math.ceil(totalDuration / frameInterval);
         
-        // 启动动画并标记开始，使用进度回调
-        await page.evaluate(() => {
-            if (window.writer) {
-                window.animationStarted = true;
-                window.writer.animateCharacter({
-                    onProgress: (progress) => {
-                        window.animationProgress = progress;
-                    }
-                });
-            }
-        });
+        console.log('开始录制循环...');
         
-        // 等待动画真正开始 - 等待第一个笔画出现
-        // 通过检查SVG路径元素或等待一段时间
-        let animationDetected = false;
-        for (let check = 0; check < 60; check++) {
-            await page.waitForTimeout(50);
-            const hasStroke = await page.evaluate(() => {
-                // 检查SVG路径元素
-                const svg = document.querySelector('svg');
-                if (svg) {
-                    const paths = svg.querySelectorAll('path');
-                    // 检查是否有路径的stroke-dasharray或stroke-dashoffset变化（表示动画进行中）
-                    for (let path of paths) {
-                        const style = window.getComputedStyle(path);
-                        const strokeDasharray = style.strokeDasharray;
-                        if (strokeDasharray && strokeDasharray !== 'none' && strokeDasharray !== '0px') {
-                            return true;
-                        }
-                        // 或者检查路径是否可见
-                        if (path.getAttribute('stroke') && path.getAttribute('stroke') !== 'none') {
-                            return true;
-                        }
-                    }
-                }
-                return false;
-            });
+        let frameCount = 0;
+        let finishedFrameCount = 0; // 动画结束后继续录制的帧数
+        const extraFramesAfterFinish = CONFIG.fps * 2; // 动画结束后多录2秒
+        const maxFrames = CONFIG.fps * 60; // 最大录制60秒，防止死循环
+        const startAnimationAtFrame = 5; // 在第5帧启动动画（约0.3秒后），确保录到开头
+        
+        while (true) {
+            const framePath = path.join(tempFrameDir, `frame${String(frameCount).padStart(4, '0')}.png`);
             
-            if (hasStroke) {
-                animationDetected = true;
-                console.log('检测到动画开始');
-                break;
-            }
-        }
-        
-        // 即使没检测到，也等待一段时间确保动画开始
-        if (!animationDetected) {
-            console.log('等待动画启动...');
-            await page.waitForTimeout(500);
-        }
-        
-        // 在动画进行的同时录制帧
-        for (let i = 0; i < totalFrames; i++) {
-            const framePath = path.join(tempFrameDir, `frame${String(i).padStart(4, '0')}.png`);
-            
-            // 先截图
-            // 截图整个视口以包含水印
+            // 截图
             await page.screenshot({
                 path: framePath,
                 clip: {
@@ -146,16 +157,57 @@ async function generateGIF(character) {
                 }
             });
             
+            // 在指定帧启动动画
+            if (frameCount === startAnimationAtFrame) {
+                console.log('启动动画...');
+                await page.evaluate(() => {
+                    if (window.startAnimation) {
+                        window.startAnimation();
+                    } else {
+                        // 兼容旧版如果没刷新页面
+                         if (window.writer) {
+                            window.animationStarted = true;
+                            window.writer.animateCharacter({
+                                onProgress: (progress) => { window.animationProgress = progress; },
+                                onComplete: () => { window.animationFinished = true; }
+                            });
+                        }
+                    }
+                });
+            }
+            
+            // 检查动画是否完成
+            const isFinished = await page.evaluate(() => window.animationFinished === true);
+            
+            if (isFinished) {
+                if (finishedFrameCount === 0) {
+                    console.log('动画已完成，继续录制结尾...');
+                }
+                finishedFrameCount++;
+                if (finishedFrameCount >= extraFramesAfterFinish) {
+                    console.log('录制完成。');
+                    break;
+                }
+            }
+            
+            // 安全限制
+            if (frameCount >= maxFrames) {
+                console.warn('达到最大录制帧数限制，强制停止。');
+                break;
+            }
+            
             // 等待下一帧
             await page.waitForTimeout(frameInterval);
             
             // 显示进度
-            if ((i + 1) % 10 === 0 || i === totalFrames - 1) {
-                console.log(`已录制 ${i + 1}/${totalFrames} 帧`);
+            if ((frameCount + 1) % 10 === 0) {
+                process.stdout.write(`\r已录制 ${frameCount + 1} 帧...`);
             }
+            
+            frameCount++;
         }
         
-        console.log('开始生成GIF...');
+        console.log('\n开始生成GIF...');
         
         const outputPath = path.join(CONFIG.outputDir, `${character}.gif`);
         

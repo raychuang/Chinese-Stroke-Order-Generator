@@ -15,7 +15,7 @@
             height: 100%;
             margin: 0;
             padding: 0;
-            background: #87CEEB; /* 浅蓝色背景 */
+            background: #fff; /* 浅蓝色背景 */
             display: flex;
             justify-content: center;
             align-items: center;
@@ -28,66 +28,19 @@
             position: relative;
             z-index: 2;
         }
-        /* 背景重复文字水印 - 十字线 */
-        .watermark-bg {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100vw;
-            height: 100vh;
-            z-index: 1;
-            pointer-events: none;
-            overflow: visible;
-        }
-        .watermark-line {
-            position: absolute;
-            color: rgba(255, 255, 255, 0.15);
-            font-size: 12px; /* 很小的字体 */
-            font-weight: bold;
-            font-family: Arial, sans-serif;
-            white-space: nowrap;
-        }
-        .watermark-line.horizontal {
-            /* 水平线 - 横线 */
-            top: 50%;
-            left: 0;
-            width: 100%;
-            transform: translateY(-50%);
-            text-align: center;
-        }
-        .watermark-line.vertical {
-            /* 垂直线 - 竖线 */
-            left: 50%;
-            top: 0;
-            height: 100%;
-            transform: translateX(-50%) rotate(90deg);
-            transform-origin: center;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        /* 右下角水印 */
-        .watermark-corner {
-            position: fixed;
-            bottom: 10px;
-            right: 10px;
-            z-index: 3;
-            color: white;
-            font-size: 18px; /* 增大字体 */
-            font-family: Arial, sans-serif;
-            text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.3);
-        }
     </style>
 </head>
 <body>
-    <!-- 背景重复水印 -->
-    <div class="watermark-bg" id="watermark-bg"></div>
-    
-    <!-- 右下角水印 -->
-    <div class="watermark-corner">hanzistroke.com</div>
-    
-    <div id="character-container"></div>
-    <script src="https://cdn.jsdelivr.net/npm/hanzi-writer@2.2.2/dist/hanzi-writer.min.js"></script>
+    <div id="character-container">
+        <svg width="500" height="500" style="position: absolute; top: 0; left: 0; pointer-events: none; z-index: -1;">
+            <rect x="0" y="0" width="500" height="500" fill="none" stroke="#D3D3D3" stroke-width="2" />
+            <line x1="0" y1="0" x2="500" y2="500" stroke="#D3D3D3" stroke-width="1" stroke-dasharray="10 10" />
+            <line x1="500" y1="0" x2="0" y2="500" stroke="#D3D3D3" stroke-width="1" stroke-dasharray="10 10" />
+            <line x1="250" y1="0" x2="250" y2="500" stroke="#D3D3D3" stroke-width="1" stroke-dasharray="10 10" />
+            <line x1="0" y1="250" x2="500" y2="250" stroke="#D3D3D3" stroke-width="1" stroke-dasharray="10 10" />
+        </svg>
+    </div>
+    <script src="./scripts/hanzi-writer.min.js"></script>
     <script>
         // 从URL参数获取汉字
         const urlParams = new URLSearchParams(window.location.search);
@@ -97,54 +50,15 @@
             width: 500,
             height: 500,
             padding: 10,
-            strokeColor: '#FFFFFF', // 白色字符
+            strokeColor: '#000000',
             strokeWidth: 5, // 增加笔画宽度以适应更大的尺寸
             showCharacter: false,
-            showOutline: false,
-            delayBetweenStrokes: 400, // 笔画之间的延迟，让动画更慢
+            showOutline: true,
+            delayBetweenStrokes: 1000, // 笔画之间的延迟，让动画更慢
             delayBetweenLoops: 0,
-            strokeAnimationDuration: 1200, // 每个笔画的动画时长，让动画更慢
-            radicalColor: '#FF0000' // 红色笔画高亮
+            strokeAnimationDuration: 2000, // 每个笔画的动画时长，让动画更慢
+            radicalColor: '#FF0000', // 红色笔画高亮
         });
-        
-        // 创建背景重复水印 - 十字线
-        function createWatermarkBg() {
-            const bg = document.getElementById('watermark-bg');
-            const text = 'hanzistroke';
-            
-            // 等待一下确保视口尺寸已确定
-            setTimeout(() => {
-                // 获取视口尺寸
-                const viewportWidth = window.innerWidth || document.documentElement.clientWidth || 540;
-                const viewportHeight = window.innerHeight || document.documentElement.clientHeight || 540;
-                
-                // 清空之前的水印
-                bg.innerHTML = '';
-                
-                // 创建水平线（横线）
-                const horizontalLine = document.createElement('div');
-                horizontalLine.className = 'watermark-line horizontal';
-                // 重复文字以填满整条横线
-                const repeatCount = Math.ceil(viewportWidth / 80) + 2; // 80px是大约的文字宽度
-                horizontalLine.textContent = (text + ' ').repeat(repeatCount);
-                bg.appendChild(horizontalLine);
-                
-                // 创建垂直线（竖线）
-                const verticalLine = document.createElement('div');
-                verticalLine.className = 'watermark-line vertical';
-                // 重复文字以填满整条竖线
-                const verticalRepeatCount = Math.ceil(viewportHeight / 80) + 2;
-                verticalLine.textContent = (text + ' ').repeat(verticalRepeatCount);
-                bg.appendChild(verticalLine);
-            }, 100);
-        }
-        
-        // 页面加载后创建水印
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', createWatermarkBg);
-        } else {
-            createWatermarkBg();
-        }
         
         // 暴露writer对象供外部访问
         window.writer = writer;
@@ -152,12 +66,27 @@
         // 用于通知外部动画已准备好
         window.animationReady = false;
         window.animationStarted = false;
+        window.animationFinished = false; // 新增：动画完成标志
         window.animationProgress = 0;
+        
+        // 封装启动动画的方法，支持回调
+        window.startAnimation = function() {
+            window.animationStarted = true;
+            window.animationFinished = false;
+            writer.animateCharacter({
+                onProgress: (progress) => {
+                    window.animationProgress = progress;
+                },
+                onComplete: () => {
+                    window.animationFinished = true;
+                }
+            });
+        };
         
         // hanzi-writer的create方法已经加载了字符，等待一小段时间确保渲染完成
         setTimeout(() => {
             window.animationReady = true;
-        }, 800);
+        }, 1600);
     </script>
 </body>
 </html>

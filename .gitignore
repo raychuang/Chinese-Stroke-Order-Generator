@@ -3,4 +3,5 @@ temp/
 *.gif
 *.png
 .DS_Store
+output/
 
